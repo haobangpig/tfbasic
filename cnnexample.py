@@ -30,7 +30,7 @@ def conv2d(input, filter, strides, padding, use_cudnn_ongpu=None, data_format=No
     分别表示 批次数，图像高度，宽度，输入通道数。 
     filter： 卷积核。格式要求为[filter_height, filter_width, in_channels, out_channels]. 
     分别表示 卷积核的高度，宽度，输入通道数，输出通道数。 
-    strides :一个长为4的list. 表示每次卷积以后卷积窗口在input中滑动的距离 
+    strides :一个长为4的list. 表示每次卷积以后卷积窗口在input中滑动的距离 [batch, height, width, channels]
     padding ：有SAME和VALID两种选项，表示是否要保留图像边上那一圈不完全卷积的部分。如果是SAME，则保留 
     use_cudnn_on_gpu ：是否使用cudnn加速。默认是True
 '''
@@ -45,39 +45,69 @@ tf.nn.max_pool :
 def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
 
 value: 一个4D张量，格式为[batch, height, width, channels]，与conv2d中input格式一样 
-ksize: 长为4的list,表示池化窗口的尺寸 
-strides: 池化窗口的滑动值，与conv2d中的一样 
+ksize: 长为4的list,表示池化窗口的尺寸 [batch, height, width, channels]
+strides: 池化窗口的滑动值，与conv2d中的一样  [batch, height, width, channels]
 padding: 与conv2d中用法一样。
+
+
+那么这里就是x为value即我们的dataset，
+'''
+
+
+
+
+#现在我们来构建我们的CNN网络结构
+def convolutional_neural_network_model(x):
+    #参数构建：
+    #filter： 卷积核。格式要求为[filter_height, filter_width, in_channels, out_channels].
+    weights = {
+                #5 X 5 convolution, 1 input image, 32 outputs
+               'W_conv1': tf.Variable(tf.random_normal([5,5,1,32])),
+               #5 X 5 convolution, 32 inputs, 64 outputs
+               'W_conv2': tf.Variable(tf.random_normal([5,5,32,64])),
+               #fully connected, 7*7*64 inputs
+               'W_fc': tf.Variable(tf.random_normal([7*7*64,1024])),
+               # fully connected, 7*7*64 inputs, 1024 outputs
+               'out': tf.Variable(tf.random_normal([1024, n_classes])),}
+
+    #we also have a bias vector with a component for each output channel
+    #所以，这里biases的值是输出的大小
+    biases = { 'b_conv1': tf.Variable(tf.random_normal([32])),
+               'b_conv2': tf.Variable(tf.random_normal([64])),
+               'b_fc': tf.Variable(tf.random_normal([1024])),
+               'out': tf.Variable(tf.random_normal([n_classes])),}
+'''
+在这里说明一下，发生了什么。
+第一层：我们使用5X5的卷积核在最初的图像上，产生了32个ouputs（feature maps），经过第一层的pooling（2X2）之后，
+变成了14X14X32的输出。
+第二层：再使用5X5的卷积在32的input中，产生了64个outputs（feature maps），经过第二层的pooling（2X2），之后
+变成了7X7X64的输出。
+第三层：7X7X64经过1024的神经元进行运输，所以output是1024。
+第四层：1024经过softmax层进行n_classes的预测。
 '''
 
 
 
 
 
-def convolutional_neural_network_model(x):
-    #filter： 卷积核。格式要求为[filter_height, filter_width, in_channels, out_channels].
-    weights = {
-                #5 X 5 convolution, 1 input image, 32 outputs
-               'W_conv1': tf.Variable(tf.random_normal([5,5,1,32])),
-               #5 X 5
-               'W_conv2': tf.Variable(tf.random_normal([5,5,32,64])),
-               'W_fc': tf.Variable(tf.random_normal([7*7*64,1024])),
-               'out': tf.Variable(tf.random_normal([1024, n_classes])),}
-
-    biases = { 'b_conv1': tf.Variable(tf.random_normal([32])),
-               'b_conv2': tf.Variable(tf.random_normal([64])),
-               'b_fc': tf.Variable(tf.random_normal([1024])),
-               'out': tf.Variable(tf.random_normal([n_classes])),}
-
-    #把图片变成28*28的图片
+#模型构建：
+    #把图片变成28*28的图片（reshape我们的input变成4D tensor:[batch, height, width, channels]）
     x = tf.reshape(x, shape=[-1, 28, 28, 1])
-
+    '''
+    x:input：待卷积的数据。格式要求为一个张量，[batch, in_height, in_width, in_channels]. 
+    分别表示 批次数，图像高度，宽度，输入通道数。 
+    '''
+    #convolution layer，使用我们的conv2d函数
     conv1 = conv2d(x, weights['W_conv1'])
+    #maxpooling （down—sampling）使用maxpool2d函数
     conv1 = maxpool2d(conv1)
-
+    #convolution layer，使用我们的conv2d函数
     conv2 = conv2d(conv1, weights['W_conv2'])
+    #maxpooling （down—sampling）使用maxpool2d函数
     conv2 = maxpool2d(conv2)
 
+    #Fully connected layer
+    #Reshape conv2 output to fit fully connected layer
     fc = tf.reshape(conv2,[-1, 7*7*64])
     fc = tf.nn.relu(tf.matmul(fc, weights['W_fc'])+biases['b_fc'])
     fc = tf.nn.dropout(fc, keep_rate)
